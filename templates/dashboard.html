@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard</title>
+    <style>body { font-family: Arial, sans-serif; margin: 30px; }</style>
+</head>
+<body>
+    <h1>Welcome, {{ session['user_name'] }}!</h1>
+    <p>Role: {{ session['role'] }}</p>
+    <p><a href="/products">View Products</a> | <a href="/logout">Logout</a></p>
+</body>
+</html>
