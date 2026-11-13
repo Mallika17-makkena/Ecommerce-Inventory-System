@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if product else 'Add' }} Product{% endblock %}
+{% block content %}
+<h1>{{ 'Edit' if product else 'Add' }} Product</h1>
+<form method="POST">
+    <input type="text" name="name" placeholder="Product name"
+           value="{{ product.name if product else '' }}" required>
+    <textarea name="description" placeholder="Description">{{ product.description if product and product.description else '' }}</textarea>
+    <input type="text" name="sku" placeholder="SKU (e.g. MOB003)"
+           value="{{ product.sku if product and product.sku else '' }}">
+    <select name="category_id">
+        {% for c in categories %}
+        <option value="{{ c.id }}"
+            {% if product and product.category_id == c.id %}selected{% endif %}>
+            {{ c.name }}
+        </option>
+        {% endfor %}
+    </select>
+    <input type="number" name="price" step="0.01" min="0" placeholder="Price"
+           value="{{ product.price if product else '' }}" required>
+    <input type="number" name="stock_quantity" min="0" placeholder="Stock quantity"
+           value="{{ product.stock_quantity if product else '' }}" required>
+    <input type="number" name="low_stock_threshold" min="0" placeholder="Low stock alert level"
+           value="{{ product.low_stock_threshold if product else 5 }}" required>
+    <button type="submit">Save</button>
+    <a href="/admin/products">Cancel</a>
+</form>
+{% endblock %}

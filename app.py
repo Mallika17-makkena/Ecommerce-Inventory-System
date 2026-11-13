@@ -1,4 +1,5 @@
 import os
+from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 import mysql.connector
 from dotenv import load_dotenv
@@ -19,14 +20,19 @@ def get_connection():
     )
 
 
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if session.get("role") != "admin":
+            flash("Admin access only. Please log in as admin.", "error")
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
 @app.route("/")
 def home():
-    return (
-        "<h1>Welcome to E-Commerce and Inventory Management System!</h1>"
-        "<a href='/products'>View Products</a> | "
-        "<a href='/register'>Register</a> | "
-        "<a href='/login'>Login</a>"
-    )
+    return render_template("home.html")
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -107,12 +113,127 @@ def products():
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
-        "SELECT id, name, price, stock_quantity, low_stock_threshold FROM products"
+        "SELECT id, name, price, stock_quantity, low_stock_threshold "
+        "FROM products WHERE is_active = TRUE"
     )
     items = cursor.fetchall()
     cursor.close()
     conn.close()
     return render_template("products.html", products=items)
+
+
+@app.route("/admin/products")
+@admin_required
+def admin_products():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT p.id, p.name, p.price, p.stock_quantity,
+                  p.low_stock_threshold, c.name AS category_name
+           FROM products p
+           LEFT JOIN categories c ON p.category_id = c.id
+           WHERE p.is_active = TRUE
+           ORDER BY p.id"""
+    )
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template("admin_products.html", products=items)
+
+
+@app.route("/admin/products/add", methods=["GET", "POST"])
+@admin_required
+def add_product():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name FROM categories")
+    categories = cursor.fetchall()
+
+    if request.method == "POST":
+        try:
+            cursor.execute(
+                """INSERT INTO products
+                   (category_id, name, description, sku, price,
+                    stock_quantity, low_stock_threshold)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    request.form["category_id"],
+                    request.form["name"].strip(),
+                    request.form["description"].strip(),
+                    request.form["sku"].strip() or None,
+                    request.form["price"],
+                    request.form["stock_quantity"],
+                    request.form["low_stock_threshold"],
+                ),
+            )
+            conn.commit()
+            flash("Product added successfully.", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("admin_products"))
+        except mysql.connector.Error as e:
+            flash(f"Could not add product: {e.msg}", "error")
+
+    cursor.close()
+    conn.close()
+    return render_template("product_form.html", product=None, categories=categories)
+
+
+@app.route("/admin/products/edit/<int:product_id>", methods=["GET", "POST"])
+@admin_required
+def edit_product(product_id):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT id, name FROM categories")
+    categories = cursor.fetchall()
+
+    if request.method == "POST":
+        try:
+            cursor.execute(
+                """UPDATE products
+                   SET category_id=%s, name=%s, description=%s, sku=%s,
+                       price=%s, stock_quantity=%s, low_stock_threshold=%s
+                   WHERE id=%s""",
+                (
+                    request.form["category_id"],
+                    request.form["name"].strip(),
+                    request.form["description"].strip(),
+                    request.form["sku"].strip() or None,
+                    request.form["price"],
+                    request.form["stock_quantity"],
+                    request.form["low_stock_threshold"],
+                    product_id,
+                ),
+            )
+            conn.commit()
+            flash("Product updated successfully.", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("admin_products"))
+        except mysql.connector.Error as e:
+            flash(f"Could not update product: {e.msg}", "error")
+
+    cursor.execute("SELECT * FROM products WHERE id = %s", (product_id,))
+    product = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not product:
+        flash("Product not found.", "error")
+        return redirect(url_for("admin_products"))
+    return render_template("product_form.html", product=product, categories=categories)
+
+
+@app.route("/admin/products/delete/<int:product_id>", methods=["POST"])
+@admin_required
+def delete_product(product_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE products SET is_active = FALSE WHERE id = %s", (product_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    flash("Product removed.", "success")
+    return redirect(url_for("admin_products"))
 
 
 if __name__ == "__main__":

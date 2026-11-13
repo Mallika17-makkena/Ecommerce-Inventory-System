@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Manage Products{% endblock %}
+{% block content %}
+<h1>Manage Products</h1>
+<p><a href="/admin/products/add">+ Add New Product</a></p>
+<table>
+    <tr>
+        <th>ID</th><th>Name</th><th>Category</th><th>Price (₹)</th>
+        <th>Stock</th><th>Actions</th>
+    </tr>
+    {% for p in products %}
+    <tr>
+        <td>{{ p.id }}</td>
+        <td>{{ p.name }}</td>
+        <td>{{ p.category_name or '-' }}</td>
+        <td>{{ p.price }}</td>
+        <td class="{{ 'low' if p.stock_quantity <= p.low_stock_threshold }}">
+            {{ p.stock_quantity }}
+            {% if p.stock_quantity <= p.low_stock_threshold %}(Low){% endif %}
+        </td>
+        <td>
+            <a href="/admin/products/edit/{{ p.id }}">Edit</a> |
+            <form method="POST" action="/admin/products/delete/{{ p.id }}"
+                  style="display:inline"
+                  onsubmit="return confirm('Delete this product?');">
+                <button type="submit" class="danger">Delete</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}

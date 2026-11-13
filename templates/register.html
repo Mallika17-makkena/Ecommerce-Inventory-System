@@ -1,28 +1,12 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Register</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; }
-        input { display: block; margin: 8px 0; padding: 8px; width: 260px; }
-        button { padding: 8px 16px; }
-        .error { color: red; }
-        .success { color: green; }
-    </style>
-</head>
-<body>
-    <h1>Register</h1>
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% for category, message in messages %}
-            <p class="{{ category }}">{{ message }}</p>
-        {% endfor %}
-    {% endwith %}
-    <form method="POST">
-        <input type="text" name="full_name" placeholder="Full name" required>
-        <input type="email" name="email" placeholder="Email" required>
-        <input type="password" name="password" placeholder="Password (min 6 characters)" required>
-        <button type="submit">Register</button>
-    </form>
-    <p>Already have an account? <a href="/login">Login</a></p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Register{% endblock %}
+{% block content %}
+<h1>Register</h1>
+<form method="POST">
+    <input type="text" name="full_name" placeholder="Full name" required>
+    <input type="email" name="email" placeholder="Email" required>
+    <input type="password" name="password" placeholder="Password (min 6 characters)" required>
+    <button type="submit">Register</button>
+</form>
+<p>Already have an account? <a href="/login">Login</a></p>
+{% endblock %}  

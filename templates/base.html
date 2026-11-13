@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}E-Commerce System{% endblock %}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; }
+        nav { background: #222; padding: 12px 30px; }
+        nav a { color: white; margin-right: 18px; text-decoration: none; }
+        .content { margin: 30px; }
+        table { border-collapse: collapse; width: 90%; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background: #f2f2f2; }
+        input, select, textarea { display: block; margin: 8px 0; padding: 8px; width: 300px; }
+        button { padding: 8px 16px; }
+        .error { color: red; }
+        .success { color: green; }
+        .low { color: red; font-weight: bold; }
+        .danger { color: red; }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/">Home</a>
+        <a href="/products">Products</a>
+        {% if session.get('user_id') %}
+            <a href="/dashboard">Dashboard</a>
+            {% if session.get('role') == 'admin' %}
+                <a href="/admin/products">Manage Products</a>
+            {% endif %}
+            <a href="/logout">Logout</a>
+        {% else %}
+            <a href="/login">Login</a>
+            <a href="/register">Register</a>
+        {% endif %}
+    </nav>
+    <div class="content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <p class="{{ category }}">{{ message }}</p>
+            {% endfor %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
