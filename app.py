@@ -110,16 +110,41 @@ def logout():
 
 @app.route("/products")
 def products():
+    search = request.args.get("search", "").strip()
+    category_id = request.args.get("category", "").strip()
+
+    query = """SELECT p.id, p.name, p.price, p.stock_quantity,
+                      p.low_stock_threshold, c.name AS category_name
+               FROM products p
+               LEFT JOIN categories c ON p.category_id = c.id
+               WHERE p.is_active = TRUE"""
+    params = []
+
+    if search:
+        query += " AND p.name LIKE %s"
+        params.append(f"%{search}%")
+    if category_id:
+        query += " AND p.category_id = %s"
+        params.append(category_id)
+
+    query += " ORDER BY p.id"
+
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute(
-        "SELECT id, name, price, stock_quantity, low_stock_threshold "
-        "FROM products WHERE is_active = TRUE"
-    )
+    cursor.execute(query, params)
     items = cursor.fetchall()
+    cursor.execute("SELECT id, name FROM categories ORDER BY name")
+    categories = cursor.fetchall()
     cursor.close()
     conn.close()
-    return render_template("products.html", products=items)
+
+    return render_template(
+        "products.html",
+        products=items,
+        categories=categories,
+        search=search,
+        selected_category=category_id,
+    )
 
 
 @app.route("/admin/products")
