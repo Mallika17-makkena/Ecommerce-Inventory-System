@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}My Cart{% endblock %}
+{% block content %}
+<h1>My Cart</h1>
+{% if items %}
+<table>
+    <tr><th>Product</th><th>Price (₹)</th><th>Quantity</th><th>Total (₹)</th><th>Action</th></tr>
+    {% for i in items %}
+    <tr>
+        <td>{{ i.name }}</td>
+        <td>{{ i.price }}</td>
+        <td>
+            <form method="POST" action="/cart/update/{{ i.item_id }}" style="display:inline">
+                <input type="number" name="quantity" value="{{ i.quantity }}" min="0"
+                       max="{{ i.stock_quantity }}" style="display:inline-block; width:70px;">
+                <button type="submit">Update</button>
+            </form>
+        </td>
+        <td>{{ i.line_total }}</td>
+        <td>
+            <form method="POST" action="/cart/remove/{{ i.item_id }}" style="display:inline">
+                <button type="submit" class="danger">Remove</button>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+    <tr>
+        <th colspan="3" style="text-align:right">Grand Total</th>
+        <th colspan="2">₹ {{ total }}</th>
+    </tr>
+</table>
+{% else %}
+<p>Your cart is empty. <a href="/products">Browse products</a></p>
+{% endif %}
+{% endblock %}

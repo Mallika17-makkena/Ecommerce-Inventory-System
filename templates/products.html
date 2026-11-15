@@ -21,7 +21,7 @@
 
 {% if products %}
 <table>
-    <tr><th>ID</th><th>Name</th><th>Category</th><th>Price (₹)</th><th>Stock</th></tr>
+    <tr><th>ID</th><th>Name</th><th>Category</th><th>Price (₹)</th><th>Stock</th><th>Cart</th></tr>
     {% for p in products %}
     <tr>
         <td>{{ p.id }}</td>
@@ -33,6 +33,13 @@
             {% else %}{{ p.stock_quantity }}
                 {% if p.stock_quantity <= p.low_stock_threshold %}(Low stock){% endif %}
             {% endif %}
+        </td>
+        <td>
+            {% if p.stock_quantity > 0 %}
+            <form method="POST" action="/cart/add/{{ p.id }}">
+                <button type="submit">Add to Cart</button>
+            </form>
+            {% else %}-{% endif %}
         </td>
     </tr>
     {% endfor %}

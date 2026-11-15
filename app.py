@@ -30,6 +30,26 @@ def admin_required(f):
     return wrapper
 
 
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Please log in first.", "error")
+            return redirect(url_for("login"))
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def get_or_create_cart(cursor, conn, user_id):
+    cursor.execute("SELECT id FROM cart WHERE user_id = %s", (user_id,))
+    row = cursor.fetchone()
+    if row:
+        return row["id"]
+    cursor.execute("INSERT INTO cart (user_id) VALUES (%s)", (user_id,))
+    conn.commit()
+    return cursor.lastrowid
+
+
 @app.route("/")
 def home():
     return render_template("home.html")
@@ -146,6 +166,128 @@ def products():
         selected_category=category_id,
     )
 
+
+# ---------------- Cart ----------------
+
+@app.route("/cart")
+@login_required
+def view_cart():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cart_id = get_or_create_cart(cursor, conn, session["user_id"])
+    cursor.execute(
+        """SELECT ci.id AS item_id, ci.quantity, p.id AS product_id, p.name,
+                  p.price, p.stock_quantity,
+                  (ci.quantity * p.price) AS line_total
+           FROM cart_items ci
+           JOIN products p ON ci.product_id = p.id
+           WHERE ci.cart_id = %s AND p.is_active = TRUE""",
+        (cart_id,),
+    )
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    total = sum(i["line_total"] for i in items)
+    return render_template("cart.html", items=items, total=total)
+
+
+@app.route("/cart/add/<int:product_id>", methods=["POST"])
+@login_required
+def add_to_cart(product_id):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT stock_quantity FROM products WHERE id = %s AND is_active = TRUE",
+        (product_id,),
+    )
+    product = cursor.fetchone()
+    if not product or product["stock_quantity"] <= 0:
+        cursor.close()
+        conn.close()
+        flash("This product is out of stock.", "error")
+        return redirect(url_for("products"))
+
+    cart_id = get_or_create_cart(cursor, conn, session["user_id"])
+    cursor.execute(
+        "SELECT id, quantity FROM cart_items WHERE cart_id = %s AND product_id = %s",
+        (cart_id, product_id),
+    )
+    existing = cursor.fetchone()
+    if existing:
+        if existing["quantity"] + 1 > product["stock_quantity"]:
+            flash("Not enough stock available.", "error")
+        else:
+            cursor.execute(
+                "UPDATE cart_items SET quantity = quantity + 1 WHERE id = %s",
+                (existing["id"],),
+            )
+            flash("Quantity updated in cart.", "success")
+    else:
+        cursor.execute(
+            "INSERT INTO cart_items (cart_id, product_id, quantity) VALUES (%s, %s, 1)",
+            (cart_id, product_id),
+        )
+        flash("Added to cart.", "success")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for("products"))
+
+
+@app.route("/cart/update/<int:item_id>", methods=["POST"])
+@login_required
+def update_cart(item_id):
+    try:
+        quantity = int(request.form["quantity"])
+    except ValueError:
+        quantity = 1
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cart_id = get_or_create_cart(cursor, conn, session["user_id"])
+    cursor.execute(
+        """SELECT p.stock_quantity FROM cart_items ci
+           JOIN products p ON ci.product_id = p.id
+           WHERE ci.id = %s AND ci.cart_id = %s""",
+        (item_id, cart_id),
+    )
+    row = cursor.fetchone()
+    if row:
+        if quantity < 1:
+            cursor.execute(
+                "DELETE FROM cart_items WHERE id = %s AND cart_id = %s",
+                (item_id, cart_id),
+            )
+        elif quantity > row["stock_quantity"]:
+            flash("Not enough stock available.", "error")
+        else:
+            cursor.execute(
+                "UPDATE cart_items SET quantity = %s WHERE id = %s AND cart_id = %s",
+                (quantity, item_id, cart_id),
+            )
+            flash("Cart updated.", "success")
+        conn.commit()
+    cursor.close()
+    conn.close()
+    return redirect(url_for("view_cart"))
+
+
+@app.route("/cart/remove/<int:item_id>", methods=["POST"])
+@login_required
+def remove_from_cart(item_id):
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cart_id = get_or_create_cart(cursor, conn, session["user_id"])
+    cursor.execute(
+        "DELETE FROM cart_items WHERE id = %s AND cart_id = %s", (item_id, cart_id)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+    flash("Item removed.", "success")
+    return redirect(url_for("view_cart"))
+
+
+# ---------------- Admin products ----------------
 
 @app.route("/admin/products")
 @admin_required

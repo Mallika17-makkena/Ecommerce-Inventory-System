@@ -23,6 +23,7 @@
         <a href="/">Home</a>
         <a href="/products">Products</a>
         {% if session.get('user_id') %}
+            <a href="/cart">Cart</a>
             <a href="/dashboard">Dashboard</a>
             {% if session.get('role') == 'admin' %}
                 <a href="/admin/products">Manage Products</a>
