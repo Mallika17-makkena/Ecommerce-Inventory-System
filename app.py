@@ -287,6 +287,179 @@ def remove_from_cart(item_id):
     return redirect(url_for("view_cart"))
 
 
+# ---------------- Orders ----------------
+
+@app.route("/checkout", methods=["GET", "POST"])
+@login_required
+def checkout():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cart_id = get_or_create_cart(cursor, conn, session["user_id"])
+    cursor.execute(
+        """SELECT ci.id AS item_id, ci.quantity, p.id AS product_id, p.name,
+                  p.price, p.stock_quantity,
+                  (ci.quantity * p.price) AS line_total
+           FROM cart_items ci
+           JOIN products p ON ci.product_id = p.id
+           WHERE ci.cart_id = %s AND p.is_active = TRUE""",
+        (cart_id,),
+    )
+    items = cursor.fetchall()
+
+    if not items:
+        cursor.close()
+        conn.close()
+        flash("Your cart is empty.", "error")
+        return redirect(url_for("view_cart"))
+
+    total = sum(i["line_total"] for i in items)
+
+    if request.method == "POST":
+        address = request.form["address"].strip()
+        method = request.form["payment_method"]
+        if not address or method not in ("COD", "ONLINE"):
+            cursor.close()
+            conn.close()
+            flash("Please enter a valid address and payment method.", "error")
+            return redirect(url_for("checkout"))
+
+        try:
+            # Lock the product rows and re-check stock
+            for i in items:
+                cursor.execute(
+                    "SELECT stock_quantity FROM products WHERE id = %s FOR UPDATE",
+                    (i["product_id"],),
+                )
+                current = cursor.fetchone()
+                if current["stock_quantity"] < i["quantity"]:
+                    raise ValueError(f"Not enough stock for {i['name']}.")
+
+            cursor.execute(
+                """INSERT INTO orders (user_id, total_amount, shipping_address)
+                   VALUES (%s, %s, %s)""",
+                (session["user_id"], total, address),
+            )
+            order_id = cursor.lastrowid
+
+            for i in items:
+                cursor.execute(
+                    """INSERT INTO order_items
+                       (order_id, product_id, product_name, unit_price, quantity, line_total)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (order_id, i["product_id"], i["name"], i["price"],
+                     i["quantity"], i["line_total"]),
+                )
+                # Automatic stock update
+                cursor.execute(
+                    "UPDATE products SET stock_quantity = stock_quantity - %s WHERE id = %s",
+                    (i["quantity"], i["product_id"]),
+                )
+                cursor.execute(
+                    """INSERT INTO inventory_transactions
+                       (product_id, quantity_change, transaction_type, note)
+                       VALUES (%s, %s, 'sale', %s)""",
+                    (i["product_id"], -i["quantity"], f"Order #{order_id}"),
+                )
+
+            cursor.execute(
+                """INSERT INTO payments (order_id, payment_method, amount)
+                   VALUES (%s, %s, %s)""",
+                (order_id, method, total),
+            )
+            cursor.execute("DELETE FROM cart_items WHERE cart_id = %s", (cart_id,))
+            conn.commit()
+            flash(f"Order #{order_id} placed successfully!", "success")
+            cursor.close()
+            conn.close()
+            return redirect(url_for("my_orders"))
+        except ValueError as e:
+            conn.rollback()
+            flash(str(e), "error")
+        except mysql.connector.Error as e:
+            conn.rollback()
+            flash(f"Could not place order: {e.msg}", "error")
+
+        cursor.close()
+        conn.close()
+        return redirect(url_for("view_cart"))
+
+    cursor.close()
+    conn.close()
+    return render_template("checkout.html", items=items, total=total)
+
+
+@app.route("/orders")
+@login_required
+def my_orders():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT * FROM orders WHERE user_id = %s ORDER BY id DESC",
+        (session["user_id"],),
+    )
+    orders = cursor.fetchall()
+    for o in orders:
+        cursor.execute("SELECT * FROM order_items WHERE order_id = %s", (o["id"],))
+        o["order_items"] = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template("orders.html", orders=orders)
+
+
+@app.route("/admin/orders")
+@admin_required
+def admin_orders():
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        """SELECT o.id, o.total_amount, o.status, o.created_at, u.full_name
+           FROM orders o JOIN users u ON o.user_id = u.id
+           ORDER BY o.id DESC"""
+    )
+    orders = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return render_template("admin_orders.html", orders=orders)
+
+
+@app.route("/admin/orders/<int:order_id>/status", methods=["POST"])
+@admin_required
+def update_order_status(order_id):
+    status = request.form["status"]
+    if status in ("pending", "confirmed", "shipped", "delivered", "cancelled"):
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT status FROM orders WHERE id = %s", (order_id,))
+        current = cursor.fetchone()
+        if current and current["status"] != "cancelled":
+            cursor.execute("UPDATE orders SET status = %s WHERE id = %s", (status, order_id))
+            # Cancelling returns the stock
+            if status == "cancelled":
+                cursor.execute(
+                    "SELECT product_id, quantity FROM order_items WHERE order_id = %s",
+                    (order_id,),
+                )
+                for it in cursor.fetchall():
+                    if it["product_id"]:
+                        cursor.execute(
+                            "UPDATE products SET stock_quantity = stock_quantity + %s WHERE id = %s",
+                            (it["quantity"], it["product_id"]),
+                        )
+                        cursor.execute(
+                            """INSERT INTO inventory_transactions
+                               (product_id, quantity_change, transaction_type, note)
+                               VALUES (%s, %s, 'return', %s)""",
+                            (it["product_id"], it["quantity"], f"Order #{order_id} cancelled"),
+                        )
+            conn.commit()
+            flash("Order status updated.", "success")
+        else:
+            flash("Cancelled orders cannot be changed.", "error")
+        cursor.close()
+        conn.close()
+    return redirect(url_for("admin_orders"))
+
+
 # ---------------- Admin products ----------------
 
 @app.route("/admin/products")

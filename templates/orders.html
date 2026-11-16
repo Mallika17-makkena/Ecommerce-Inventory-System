@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}My Orders{% endblock %}
+{% block content %}
+<h1>My Orders</h1>
+{% if orders %}
+{% for o in orders %}
+<h3>Order #{{ o.id }} - {{ o.status|capitalize }} - ₹ {{ o.total_amount }}</h3>
+<p>Placed on {{ o.created_at }} | Address: {{ o.shipping_address }}</p>
+<table>
+    <tr><th>Product</th><th>Price (₹)</th><th>Qty</th><th>Total (₹)</th></tr>
+    {% for it in o.order_items %}
+    <tr>
+        <td>{{ it.product_name }}</td><td>{{ it.unit_price }}</td>
+        <td>{{ it.quantity }}</td><td>{{ it.line_total }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endfor %}
+{% else %}
+<p>You have no orders yet. <a href="/products">Start shopping</a></p>
+{% endif %}
+{% endblock %}
