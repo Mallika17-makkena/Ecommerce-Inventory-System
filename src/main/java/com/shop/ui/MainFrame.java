@@ -1,3 +1,4 @@
+
 package com.shop.ui;
 
 import com.shop.model.User;
@@ -6,16 +7,20 @@ import javax.swing.*;
 import java.awt.*;
 
 public class MainFrame extends JFrame {
+
     private final CardLayout cards = new CardLayout();
     private final JPanel root = new JPanel(cards);
+
     private final DashboardPanel dashboard = new DashboardPanel(this);
     private final ProductPanel productPanel = new ProductPanel(this);
     private final CategoryPanel categoryPanel = new CategoryPanel(this);
+    private final CataloguePanel cataloguePanel = new CataloguePanel(this);
 
     public MainFrame() {
+
         setTitle("E-Commerce & Inventory Management");
         setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setSize(800, 480);
+        setSize(900, 550);
         setLocationRelativeTo(null);
 
         root.add(new LoginPanel(this), "login");
@@ -23,6 +28,8 @@ public class MainFrame extends JFrame {
         root.add(dashboard, "dashboard");
         root.add(productPanel, "products");
         root.add(categoryPanel, "categories");
+        root.add(cataloguePanel, "catalogue");
+
         add(root);
         show("login");
     }
@@ -44,5 +51,10 @@ public class MainFrame extends JFrame {
     public void showCategories(User user) {
         categoryPanel.setUser(user);
         show("categories");
+    }
+
+    public void showCatalogue(User user) {
+        cataloguePanel.setUser(user);
+        show("catalogue");
     }
 }
