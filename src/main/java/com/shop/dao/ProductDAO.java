@@ -1,3 +1,4 @@
+
 package com.shop.dao;
 
 import com.shop.model.Product;
@@ -10,77 +11,171 @@ import java.util.List;
 
 public class ProductDAO {
 
+    // Display all active products
     public List<Product> findAllActive() throws SQLException {
+        return searchProducts("", null, null, null);
+    }
+
+    // Search products by name and filter by category and price
+    public List<Product> searchProducts(
+            String keyword,
+            Integer categoryId,
+            BigDecimal minPrice,
+            BigDecimal maxPrice) throws SQLException {
+
         List<Product> list = new ArrayList<>();
-        String sql = """
-                SELECT p.id, p.category_id, c.name AS category_name, p.name, p.description,
-                       p.sku, p.price, p.stock_quantity, p.low_stock_threshold
+
+        StringBuilder sql = new StringBuilder("""
+                SELECT p.id, p.category_id, c.name AS category_name,
+                       p.name, p.description, p.sku, p.price,
+                       p.stock_quantity, p.low_stock_threshold
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
                 WHERE p.is_active = TRUE
-                ORDER BY p.id
-                """;
+                """);
+
+        if (keyword != null && !keyword.isBlank()) {
+            sql.append(" AND p.name LIKE ?");
+        }
+
+        if (categoryId != null) {
+            sql.append(" AND p.category_id = ?");
+        }
+
+        if (minPrice != null) {
+            sql.append(" AND p.price >= ?");
+        }
+
+        if (maxPrice != null) {
+            sql.append(" AND p.price <= ?");
+        }
+
+        sql.append(" ORDER BY p.name");
+
         try (Connection c = DBConnection.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                int catId = rs.getInt("category_id");
-                Integer categoryId = rs.wasNull() ? null : catId;
-                list.add(new Product(rs.getInt("id"), categoryId,
-                        rs.getString("category_name"), rs.getString("name"),
-                        rs.getString("description"), rs.getString("sku"),
-                        rs.getBigDecimal("price"), rs.getInt("stock_quantity"),
-                        rs.getInt("low_stock_threshold")));
+             PreparedStatement ps = c.prepareStatement(sql.toString())) {
+
+            int index = 1;
+
+            if (keyword != null && !keyword.isBlank()) {
+                ps.setString(index++, "%" + keyword.trim() + "%");
+            }
+
+            if (categoryId != null) {
+                ps.setInt(index++, categoryId);
+            }
+
+            if (minPrice != null) {
+                ps.setBigDecimal(index++, minPrice);
+            }
+
+            if (maxPrice != null) {
+                ps.setBigDecimal(index++, maxPrice);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+
+                    int catId = rs.getInt("category_id");
+                    Integer actualCategoryId =
+                            rs.wasNull() ? null : catId;
+
+                    list.add(new Product(
+                            rs.getInt("id"),
+                            actualCategoryId,
+                            rs.getString("category_name"),
+                            rs.getString("name"),
+                            rs.getString("description"),
+                            rs.getString("sku"),
+                            rs.getBigDecimal("price"),
+                            rs.getInt("stock_quantity"),
+                            rs.getInt("low_stock_threshold")
+                    ));
+                }
             }
         }
+
         return list;
     }
 
-    public void insert(Integer categoryId, String name, String description, String sku,
-                       BigDecimal price, int stock, int threshold) throws SQLException {
+    // Add a new product
+    public void insert(Integer categoryId, String name, String description,
+                       String sku, BigDecimal price, int stock,
+                       int threshold) throws SQLException {
+
         String sql = """
-                INSERT INTO products (category_id, name, description, sku, price,
-                                      stock_quantity, low_stock_threshold)
+                INSERT INTO products (category_id, name, description, sku,
+                                      price, stock_quantity, low_stock_threshold)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """;
+
         try (Connection c = DBConnection.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            bind(ps, categoryId, name, description, sku, price, stock, threshold);
+
+            bind(ps, categoryId, name, description, sku,
+                    price, stock, threshold);
+
             ps.executeUpdate();
         }
     }
 
-    public void update(int id, Integer categoryId, String name, String description, String sku,
-                       BigDecimal price, int stock, int threshold) throws SQLException {
+    // Update an existing product
+    public void update(int id, Integer categoryId, String name,
+                       String description, String sku, BigDecimal price,
+                       int stock, int threshold) throws SQLException {
+
         String sql = """
-                UPDATE products SET category_id = ?, name = ?, description = ?, sku = ?,
-                       price = ?, stock_quantity = ?, low_stock_threshold = ?
+                UPDATE products
+                SET category_id = ?, name = ?, description = ?, sku = ?,
+                    price = ?, stock_quantity = ?, low_stock_threshold = ?
                 WHERE id = ?
                 """;
+
         try (Connection c = DBConnection.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            bind(ps, categoryId, name, description, sku, price, stock, threshold);
+
+            bind(ps, categoryId, name, description, sku,
+                    price, stock, threshold);
+
             ps.setInt(8, id);
             ps.executeUpdate();
         }
     }
 
-    /** Soft delete: old orders still refer to the product. */
+    // Soft delete a product
     public void softDelete(int id) throws SQLException {
+
         String sql = "UPDATE products SET is_active = FALSE WHERE id = ?";
+
         try (Connection c = DBConnection.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
+
             ps.setInt(1, id);
             ps.executeUpdate();
         }
     }
 
-    private void bind(PreparedStatement ps, Integer categoryId, String name, String description,
-                      String sku, BigDecimal price, int stock, int threshold) throws SQLException {
-        if (categoryId == null) ps.setNull(1, Types.INTEGER); else ps.setInt(1, categoryId);
+    // Bind product values
+    private void bind(PreparedStatement ps, Integer categoryId,
+                      String name, String description, String sku,
+                      BigDecimal price, int stock, int threshold)
+            throws SQLException {
+
+        if (categoryId == null) {
+            ps.setNull(1, Types.INTEGER);
+        } else {
+            ps.setInt(1, categoryId);
+        }
+
         ps.setString(2, name);
         ps.setString(3, description);
-        if (sku == null || sku.isBlank()) ps.setNull(4, Types.VARCHAR); else ps.setString(4, sku);
+
+        if (sku == null || sku.isBlank()) {
+            ps.setNull(4, Types.VARCHAR);
+        } else {
+            ps.setString(4, sku);
+        }
+
         ps.setBigDecimal(5, price);
         ps.setInt(6, stock);
         ps.setInt(7, threshold);
