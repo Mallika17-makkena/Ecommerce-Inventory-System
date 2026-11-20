@@ -1,4 +1,3 @@
-
 package com.shop.service;
 
 import com.shop.dao.CategoryDAO;
@@ -10,6 +9,7 @@ import com.shop.model.User;
 import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Optional;
 
 public class CatalogService {
 
@@ -21,15 +21,29 @@ public class CatalogService {
         return productDAO.findAllActive();
     }
 
-    // Search and filter catalogue products
+    // Fetch single product by ID
+    public Optional<Product> getProductById(int id) throws SQLException {
+        return productDAO.findById(id);
+    }
+
+    // Search and filter catalogue products with price range validation
     public List<Product> searchProducts(
             String keyword,
             Integer categoryId,
             BigDecimal minPrice,
             BigDecimal maxPrice) throws SQLException {
 
-        return productDAO.searchProducts(
-                keyword, categoryId, minPrice, maxPrice);
+        if (minPrice != null && minPrice.signum() < 0) {
+            throw new IllegalArgumentException("Minimum price cannot be negative.");
+        }
+        if (maxPrice != null && maxPrice.signum() < 0) {
+            throw new IllegalArgumentException("Maximum price cannot be negative.");
+        }
+        if (minPrice != null && maxPrice != null && minPrice.compareTo(maxPrice) > 0) {
+            throw new IllegalArgumentException("Minimum price cannot be greater than maximum price.");
+        }
+
+        return productDAO.searchProducts(keyword, categoryId, minPrice, maxPrice);
     }
 
     // Get all categories
@@ -37,7 +51,7 @@ public class CatalogService {
         return categoryDAO.findAll();
     }
 
-    /** Returns an error message, or null on success. */
+    /** Returns an error message, or null on success (Member 2). */
     public String saveProduct(
             User actor, Integer productId, Category category,
             String name, String description, String sku,
@@ -46,16 +60,13 @@ public class CatalogService {
         if (actor == null || !actor.isAdmin()) {
             return "Admin access only.";
         }
-
         name = name.trim();
-
         if (name.isEmpty()) {
             return "Product name is required.";
         }
 
         BigDecimal price;
         int stock, threshold;
-
         try {
             price = new BigDecimal(priceText.trim());
             stock = Integer.parseInt(stockText.trim());
@@ -67,13 +78,11 @@ public class CatalogService {
         if (price.signum() < 0) {
             return "Price cannot be negative.";
         }
-
         if (stock < 0 || threshold < 0) {
             return "Stock values cannot be negative.";
         }
 
         Integer catId = category == null ? null : category.getId();
-
         try {
             if (productId == null) {
                 productDAO.insert(catId, name, description.trim(),
@@ -83,74 +92,57 @@ public class CatalogService {
                         description.trim(), sku.trim(),
                         price, stock, threshold);
             }
-
             return null;
-
         } catch (SQLException e) {
             if (e.getErrorCode() == 1062) {
                 return "This SKU already exists.";
             }
-
             return "Database error: " + e.getMessage();
         }
     }
 
     public String deleteProduct(User actor, int id) {
-
         if (actor == null || !actor.isAdmin()) {
             return "Admin access only.";
         }
-
         try {
             productDAO.softDelete(id);
             return null;
-
         } catch (SQLException e) {
             return "Database error: " + e.getMessage();
         }
     }
 
-    public String saveCategory(
-            User actor, Integer id, String name, String description) {
-
+    public String saveCategory(User actor, Integer id, String name, String description) {
         if (actor == null || !actor.isAdmin()) {
             return "Admin access only.";
         }
-
         name = name.trim();
-
         if (name.isEmpty()) {
             return "Category name is required.";
         }
-
         try {
             if (id == null) {
                 categoryDAO.insert(name, description.trim());
             } else {
                 categoryDAO.update(id, name, description.trim());
             }
-
             return null;
-
         } catch (SQLException e) {
             if (e.getErrorCode() == 1062) {
                 return "This category already exists.";
             }
-
             return "Database error: " + e.getMessage();
         }
     }
 
     public String deleteCategory(User actor, int id) {
-
         if (actor == null || !actor.isAdmin()) {
             return "Admin access only.";
         }
-
         try {
             categoryDAO.delete(id);
             return null;
-
         } catch (SQLException e) {
             return "Database error: " + e.getMessage();
         }
